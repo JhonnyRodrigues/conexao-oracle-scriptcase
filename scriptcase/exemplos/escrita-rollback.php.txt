@@ -1,0 +1,83 @@
+// Blank / onExecute, exclusivamente no banco e na tabela dedicados de homologacao.
+// Habilitar conexaoOracle.php pela flag. A Blank deve ser dona da transacao.
+// Este exemplo corresponde ao ambiente medido: conexao e aplicacao ISO-8859-1.
+$transacaoIniciada = false;
+$fase = 'construcao';
+$idCanario = random_int(100000000, 999999998);
+$idExcluir = $idCanario + 1;
+
+try {
+    $db = $this->criarConexaoOracle($this->Db, 'ISO-8859-1', 'ISO-8859-1');
+    $fase = 'inicio da transacao pelo evento';
+    sc_begin_trans();
+    $transacaoIniciada = true;
+
+    $sqlInsert = 'INSERT INTO SC_ORACLE_LIB_TESTE (ID, ORIGEM, DESCRICAO) VALUES (:id, :origem, :descricao)';
+    $fase = 'INSERT da linha que sera desfeita pelo rollback';
+    $db->executar($sqlInsert, [
+        'id' => $idCanario,
+        'origem' => 'BLANK_ROLLBACK',
+        'descricao' => 'Texto inicial',
+    ]);
+
+    $fase = 'UPDATE com acentos e apostrofo';
+    $texto = "D'Ávila - ação, café e órgão";
+    $db->executar(
+        'UPDATE SC_ORACLE_LIB_TESTE SET DESCRICAO = :texto WHERE ID = :id',
+        ['texto' => $texto, 'id' => $idCanario]
+    );
+    $linhas = $db->buscarTodos(
+        'SELECT DESCRICAO AS TEXTO FROM SC_ORACLE_LIB_TESTE WHERE ID = :id',
+        ['id' => $idCanario]
+    );
+    if (count($linhas) !== 1 || array_values($linhas[0]) !== [$texto]) {
+        throw new \UnexpectedValueException('Leitura do UPDATE divergente.');
+    }
+
+    $fase = 'INSERT e DELETE da segunda linha';
+    $db->executar($sqlInsert, [
+        'id' => $idExcluir,
+        'origem' => 'BLANK_ROLLBACK',
+        'descricao' => 'Linha para testar DELETE',
+    ]);
+    $db->executar('DELETE FROM SC_ORACLE_LIB_TESTE WHERE ID = :id', ['id' => $idExcluir]);
+    $excluidas = $db->buscarTodos('SELECT ID FROM SC_ORACLE_LIB_TESTE WHERE ID = :id', ['id' => $idExcluir]);
+    if ($excluidas !== []) {
+        throw new \UnexpectedValueException('A segunda linha ainda existe depois do DELETE.');
+    }
+
+    $fase = 'rollback solicitado pelo evento';
+    sc_rollback_trans();
+    $transacaoIniciada = false;
+
+    $fase = 'verificacao depois do rollback';
+    $restantes = $db->buscarTodos(
+        'SELECT ID FROM SC_ORACLE_LIB_TESTE WHERE ID IN (:canario, :excluido)',
+        ['canario' => $idCanario, 'excluido' => $idExcluir]
+    );
+    if ($restantes !== []) {
+        throw new \UnexpectedValueException('Uma linha persistiu depois do rollback.');
+    }
+} catch (\Throwable $falha) {
+    if ($transacaoIniciada) {
+        try {
+            sc_rollback_trans();
+        } catch (\Throwable $falhaRollback) {
+            exit('Falha ao desfazer a transacao. Confira no banco os IDs ' . $idCanario . ' e ' . $idExcluir . '.');
+        }
+    }
+    echo 'Teste interrompido na etapa: ' . $fase . '<br>';
+    echo 'IDs reservados para o teste: ' . $idCanario . ' e ' . $idExcluir . '<br>';
+    if ($falha instanceof \Semae\ScriptcaseOracle\FalhaOracleException) {
+        echo 'Codigo Oracle: ' . ($falha->getCodigoOracle() ?? 'indisponivel');
+    } else {
+        echo 'Tipo da falha: ' . htmlspecialchars(get_class($falha), ENT_QUOTES, 'ISO-8859-1');
+    }
+    return;
+}
+
+echo 'INSERT e UPDATE com acentos e apostrofo: OK<br>';
+echo 'DELETE: OK<br>';
+echo 'Rollback pelo evento: OK<br>';
+echo 'Consulta apos rollback: nenhuma linha do teste<br>';
+echo 'IDs do teste: ' . $idCanario . ' e ' . $idExcluir . '<br>';

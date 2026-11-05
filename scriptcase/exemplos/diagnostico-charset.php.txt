@@ -1,0 +1,45 @@
+// Apenas homologacao: leitura em DUAL, sem escrita, nova conexao ou alteracao do modo de busca.
+// Usa ADOdb diretamente para observar os bytes antes da conversao da biblioteca.
+echo 'Charset Scriptcase: '
+    . htmlspecialchars($_SESSION['scriptcase']['charset'] ?? 'nao informado', ENT_QUOTES, 'UTF-8') . '<br>';
+echo 'Charset HTML Scriptcase: '
+    . htmlspecialchars($_SESSION['scriptcase']['charset_html'] ?? 'nao informado', ENT_QUOTES, 'UTF-8') . '<br>';
+$textoAplicacao = 'ação';
+echo 'Bytes do texto no PHP da aplicacao: ' . bin2hex($textoAplicacao) . '<br>';
+
+$propriedadesPublicas = get_object_vars($this->Db);
+$charsetAdodb = $propriedadesPublicas['charSet'] ?? null;
+echo 'ADOdb charSet: '
+    . (is_string($charsetAdodb) && $charsetAdodb !== ''
+        ? htmlspecialchars($charsetAdodb, ENT_QUOTES, 'UTF-8')
+        : 'nao informado') . '<br>';
+unset($propriedadesPublicas);
+
+$nlsLang = getenv('NLS_LANG');
+echo 'NLS_LANG do processo PHP: '
+    . ($nlsLang === false || $nlsLang === ''
+        ? 'nao definido'
+        : htmlspecialchars($nlsLang, ENT_QUOTES, 'UTF-8')) . '<br>';
+
+try {
+    // O Oracle cria o texto de referencia a partir de um SQL que so contem ASCII.
+    // CAST para VARCHAR2 evita usar o retorno nacional NVARCHAR2 como referencia do texto comum.
+    $linhasBrutas = $this->Db->GetAll(
+        "SELECT CAST(UNISTR('a\\00E7\\00E3o|\\20AC|\\2013') AS VARCHAR2(64)) AS TEXTO FROM DUAL"
+    );
+} catch (\Throwable $falha) {
+    exit('Falha na leitura de referencia do charset. O diagnostico foi interrompido.');
+}
+
+if (!is_array($linhasBrutas) || count($linhasBrutas) !== 1 || !is_array($linhasBrutas[0])) {
+    exit('O driver nao retornou a linha de referencia esperada.');
+}
+
+// A consulta tem uma coluna; o primeiro valor serve tanto no modo numerico quanto no associativo.
+$linhaBruta = $linhasBrutas[0];
+$textoConexao = reset($linhaBruta);
+if (!is_string($textoConexao)) {
+    exit('O driver nao retornou texto na coluna de referencia.');
+}
+echo 'Bytes recebidos do ADOdb: ' . bin2hex($textoConexao) . '<br>';
+echo 'Diagnostico de bytes: OK<br>';

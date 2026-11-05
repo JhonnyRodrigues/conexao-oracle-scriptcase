@@ -1,0 +1,10 @@
+-- Outra sessao Oracle, mesmo banco/schema de homologacao.
+-- IDs sugeridos para os tres cenarios; ajustar se ja tiverem sido usados.
+SELECT 'FORMULARIO' AS FONTE, ID, DESCRICAO
+FROM SC_ORACLE_FORM_TESTE
+WHERE ID IN (310001, 310002, 310003)
+UNION ALL
+SELECT 'BIBLIOTECA' AS FONTE, ID, DESCRICAO
+FROM SC_ORACLE_LIB_TESTE
+WHERE ID IN (310001, 310002, 310003)
+ORDER BY ID, FONTE;

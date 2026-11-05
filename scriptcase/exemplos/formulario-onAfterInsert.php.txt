@@ -1,0 +1,33 @@
+// Formulario / onAfterInsert, ligado a SC_ORACLE_FORM_TESTE.
+// Usar a mesma conexao de homologacao nas duas tabelas; o Scriptcase controla a transacao.
+// Habilitar conexaoOracle.php pela flag Bibliotecas Internas / Projeto.
+// Confirmar que este Formulario usa ISO-8859-1, como a TESTE_CONEXAO.
+$forcarRollback = false; // true somente no terceiro cenario, com um ID novo.
+
+try {
+    $db = $this->criarConexaoOracle($this->Db, 'ISO-8859-1', 'ISO-8859-1');
+    $db->executar(
+        'INSERT INTO SC_ORACLE_LIB_TESTE (ID, ORIGEM, DESCRICAO) VALUES (:id, :origem, :descricao)',
+        ['id' => {ID}, 'origem' => 'FORMULARIO', 'descricao' => {DESCRICAO}]
+    );
+    if ($forcarRollback) {
+        throw new \RuntimeException('Rollback intencional de homologacao.');
+    }
+    // O sucesso da biblioteca nao confirma a transacao: o formulario continua sendo o dono.
+} catch (\Throwable $falha) {
+    $rollbackFalhou = false;
+    try {
+        sc_rollback_trans();
+    } catch (\Throwable $falhaRollback) {
+        $rollbackFalhou = true;
+    }
+    $mensagem = $rollbackFalhou
+        ? 'Falha ao solicitar rollback. Confira a operacao no banco de homologacao.'
+        : 'Nao foi possivel concluir a gravacao complementar. A operacao foi cancelada.';
+    if ($falha instanceof \Semae\ScriptcaseOracle\FalhaOracleException && $falha->getCodigoOracle() !== null) {
+        $mensagem .= ' Codigo: ' . $falha->getCodigoOracle() . '.';
+    }
+    sc_error_message($mensagem);
+    sc_error_exit();
+    return;
+}

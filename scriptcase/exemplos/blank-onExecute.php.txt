@@ -1,0 +1,52 @@
+// Blank / onExecute. Usar apenas na tabela dedicada de homologacao.
+// Esta Blank deve ser dona da transacao, sem outra transacao ativa.
+// Habilitar conexaoOracle.php pela flag Bibliotecas Internas / Projeto.
+
+$confirmar = false; // Primeiro teste com rollback; depois testar com true.
+$transacaoIniciada = false;
+$idTeste = random_int(100000000, 999999999);
+
+try {
+    $db = $this->criarConexaoOracle($this->Db, 'Windows-1252', 'UTF-8');
+    sc_begin_trans();
+    $transacaoIniciada = true;
+
+    $db->executar(
+        "INSERT INTO SC_ORACLE_LIB_TESTE (ID, ORIGEM, DESCRICAO, DATA_REFERENCIA, VALOR)
+         VALUES (:id, :origem, :descricao,
+                 TO_DATE(:data, 'YYYY-MM-DD'),
+                 TO_NUMBER(:valor, '9999999990D00', 'NLS_NUMERIC_CHARACTERS=''.,'''))",
+        [
+            'id' => $idTeste,
+            'origem' => 'BLANK',
+            'descricao' => "D'Ávila - ação",
+            'data' => '2026-10-29',
+            'valor' => '1234.56',
+        ]
+    );
+    $linhas = $db->buscarTodos(
+        'SELECT ID AS "id", DESCRICAO AS "descricao" FROM SC_ORACLE_LIB_TESTE WHERE ID = :id',
+        ['id' => $idTeste]
+    );
+    if (count($linhas) !== 1 || $linhas[0]['descricao'] !== "D'Ávila - ação") {
+        throw new \UnexpectedValueException('Leitura de homologacao divergente.');
+    }
+
+    if ($confirmar) {
+        sc_commit_trans();
+    } else {
+        sc_rollback_trans();
+    }
+    $transacaoIniciada = false;
+} catch (\Throwable $falha) {
+    if ($transacaoIniciada) {
+        try {
+            sc_rollback_trans();
+        } catch (\Throwable $falhaRollback) {
+            exit('Falha ao desfazer a transacao de homologacao. Interrompa o teste e confira a conexao.');
+        }
+    }
+    exit('Nao foi possivel concluir a operacao de homologacao.');
+}
+
+echo 'Consulta validada. ID: ' . $idTeste . '. Transacao: ' . ($confirmar ? 'commit' : 'rollback') . '.';

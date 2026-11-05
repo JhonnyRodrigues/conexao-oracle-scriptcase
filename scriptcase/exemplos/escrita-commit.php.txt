@@ -1,0 +1,65 @@
+// Blank / onExecute, somente na tabela dedicada de homologacao.
+// A Blank deve ser dona da transacao. Este teste deixa uma linha para conferencia em outra sessao.
+// Conexao e aplicacao medidas na TESTE_CONEXAO: ISO-8859-1.
+$idTeste = random_int(1000000000, 1999999999);
+$texto = "D'Ávila - ação, café e órgão";
+$transacaoIniciada = false;
+$commitSolicitado = false;
+$fase = 'construcao';
+
+try {
+    $db = $this->criarConexaoOracle($this->Db, 'ISO-8859-1', 'ISO-8859-1');
+    $fase = 'inicio da transacao pelo evento';
+    sc_begin_trans();
+    $transacaoIniciada = true;
+
+    $fase = 'INSERT';
+    $db->executar(
+        'INSERT INTO SC_ORACLE_LIB_TESTE (ID, ORIGEM, DESCRICAO) VALUES (:id, :origem, :descricao)',
+        ['id' => $idTeste, 'origem' => 'BLANK_COMMIT', 'descricao' => $texto]
+    );
+
+    $sqlLeitura = 'SELECT DESCRICAO AS TEXTO FROM SC_ORACLE_LIB_TESTE WHERE ID = :id';
+    $fase = 'leitura antes do commit';
+    $antes = $db->buscarTodos($sqlLeitura, ['id' => $idTeste]);
+    if (count($antes) !== 1 || array_values($antes[0]) !== [$texto]) {
+        throw new \UnexpectedValueException('Leitura anterior ao commit divergente.');
+    }
+
+    $fase = 'commit solicitado pelo evento';
+    sc_commit_trans();
+    $transacaoIniciada = false;
+    $commitSolicitado = true;
+
+    $fase = 'leitura depois do commit';
+    $depois = $db->buscarTodos($sqlLeitura, ['id' => $idTeste]);
+    if (count($depois) !== 1 || array_values($depois[0]) !== [$texto]) {
+        throw new \UnexpectedValueException('Leitura posterior ao commit divergente.');
+    }
+} catch (\Throwable $falha) {
+    if ($transacaoIniciada) {
+        try {
+            sc_rollback_trans();
+        } catch (\Throwable $falhaRollback) {
+            exit('Falha no rollback de erro. Confira o ID ' . $idTeste . ' em outra sessao Oracle.');
+        }
+    }
+    echo 'Teste interrompido na etapa: ' . $fase . '<br>';
+    echo 'ID do teste: ' . $idTeste . '<br>';
+    if ($commitSolicitado) {
+        echo 'O commit ja foi solicitado; confira a linha em outra sessao Oracle.<br>';
+    }
+    if ($falha instanceof \Semae\ScriptcaseOracle\FalhaOracleException) {
+        echo 'Codigo Oracle: ' . ($falha->getCodigoOracle() ?? 'indisponivel');
+    } else {
+        echo 'Tipo da falha: ' . htmlspecialchars(get_class($falha), ENT_QUOTES, 'ISO-8859-1');
+    }
+    return;
+}
+
+echo 'INSERT com acentos e apostrofo: OK<br>';
+echo 'Commit solicitado pelo evento: OK<br>';
+echo 'Leitura apos commit na aplicacao: OK<br>';
+echo 'ID do teste: ' . $idTeste . '<br>';
+echo 'Texto: ' . htmlspecialchars($texto, ENT_QUOTES, 'ISO-8859-1') . '<br>';
+echo 'Confira esse mesmo ID em outra sessao Oracle para confirmar a persistencia.<br>';

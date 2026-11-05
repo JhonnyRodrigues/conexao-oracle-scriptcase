@@ -1,0 +1,26 @@
+// Grid / onScriptInit: uma consulta por abertura, sem consulta adicional por registro.
+// Habilitar conexaoOracle.php pela flag Bibliotecas Internas / Projeto.
+// Homologacao: mesma conexao da Blank e aplicacao ISO-8859-1.
+// Reutiliza o registro ja confirmado no teste de commit.
+
+try {
+    $modoOriginal = $this->Db->fetchMode;
+    $db = $this->criarConexaoOracle($this->Db, 'ISO-8859-1', 'ISO-8859-1');
+    $linhas = $db->buscarTodos(
+        'SELECT DESCRICAO AS TEXTO FROM SC_ORACLE_LIB_TESTE WHERE ID = :id',
+        ['id' => 1056298063]
+    );
+    if (count($linhas) !== 1 || array_values($linhas[0]) !== ["D'Ávila - ação, café e órgão"]) {
+        exit('A consulta complementar nao retornou o registro esperado de homologacao. Confira o ID 1056298063.');
+    }
+    if ($this->Db->fetchMode !== $modoOriginal) {
+        exit('O modo de busca da conexao mudou depois da consulta complementar.');
+    }
+    // Sem echo ou alertas: a Grid deve seguir renderizando e exportando normalmente.
+} catch (\Throwable $falha) {
+    $mensagem = 'Nao foi possivel carregar os dados complementares da Grid.';
+    if ($falha instanceof \Semae\ScriptcaseOracle\FalhaOracleException && $falha->getCodigoOracle() !== null) {
+        $mensagem .= ' Codigo: ' . $falha->getCodigoOracle() . '.';
+    }
+    exit($mensagem);
+}

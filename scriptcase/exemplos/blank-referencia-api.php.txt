@@ -1,0 +1,134 @@
+// REFERENCIA DA API 0.1.0 - Blank / onExecute.
+// Cole este arquivo inteiro no evento, sem tags de abertura ou fechamento PHP.
+// Habilite conexaoOracle.php em Programacao > Bibliotecas Internas > Projeto.
+// Use a conexao Oracle da aplicacao. Nao e necessario criar tabelas.
+// Ao executar, este evento faz somente SELECT em DUAL.
+// Os exemplos de escrita no fim estao comentados e nao sao executados.
+
+// ============================================================================
+// CONTRATOS DA API PUBLICA
+// ============================================================================
+// Fabrica da biblioteca interna, incorporada como metodo pelo Scriptcase:
+// $this->criarConexaoOracle(
+//     object $adodb, string $charsetConexao, string $charsetAplicacao
+// ): \Semae\ScriptcaseOracle\BancoOracle
+// Recebe a conexao existente, carrega a externa e constroi o objeto sem SQL.
+// Alternativa fora do Scriptcase, apos carregar autoload.php:
+// new \Semae\ScriptcaseOracle\BancoOracle($adodb, $charsetConexao, $charsetAplicacao).
+// PHP 8.1+ e mbstring sao obrigatorios; ADOdb e OCI8 sao do ambiente hospedeiro.
+// Charsets aceitos, com estes nomes exatos: ISO-8859-1, Windows-1252 e UTF-8.
+// O primeiro descreve os bytes trocados com o ADOdb; o segundo, os da aplicacao.
+// Nao ha deteccao automatica. SQL/binds textuais sao convertidos para a conexao;
+// textos retornados sao convertidos para a aplicacao, sem aceitar perda de bytes.
+
+// $db->buscarTodos(string $sql, array $parametros = []): array
+// Retorna lista de linhas associativas. Sem registros, retorna [].
+// Preserva nomes das colunas e valores nao textuais; use aliases ASCII.
+// Usa GetAll() e restaura o fetchMode original, inclusive quando ha falha.
+
+// $db->executar(string $sql, array $parametros = []): void
+// Usa Execute(). Retorno normal indica comando aceito pelo driver.
+// Nao retorna linhas afetadas, ID inserido ou confirmacao de commit.
+
+// Contrato comum dos parametros:
+// SQL: :nome. Array: ['nome' => $valor], sem ':' na chave.
+// Nomes: [A-Za-z][A-Za-z0-9_]*. Valores: string, int, float ou null.
+// Nao aceita bool, arrays, objetos ou chaves numericas.
+// Binds representam valores; nomes de tabela/coluna exigem opcoes permitidas.
+// SQL e parametros seguem separados ao driver, sem substituicao textual.
+// Datas/decimais exigem formatos e conversoes SQL explicitos (exemplo no fim).
+// Tipos retornados para numeros/datas dependem do driver; nao ha conversao extra.
+
+// Falhas:
+// InvalidArgumentException: configuracao, conexao ou parametros invalidos.
+// UnexpectedValueException: texto invalido ou conversao com perda.
+// \Semae\ScriptcaseOracle\FalhaOracleException: false/excecao do driver
+// ou resposta de consulta invalida. A mensagem e controlada, sem SQL/binds.
+// $falha->getCodigoOracle(): ?string => 'ORA-00942', por exemplo, ou null.
+// A excecao bruta do driver nao e encadeada na excecao publica.
+// O evento deve tratar a falha e interromper o fluxo dependente da operacao.
+
+// Transacoes e limites:
+// A biblioteca NAO inicia, confirma ou desfaz transacoes, nao fecha a conexao,
+// nao exibe mensagens e nao grava logs. Essas decisoes cabem ao hospedeiro.
+// Indicada para listas pequenas. Sem leitura progressiva, CLOB/BLOB, parametros
+// de saida, ORM ou atalhos buscarUma()/buscarValor().
+
+// ============================================================================
+// EXEMPLO EXECUTAVEL - LEITURA
+// ============================================================================
+// Este par foi confirmado no ambiente do projeto. Ajuste ao reutilizar em outro.
+$charsetConexao = 'ISO-8859-1';
+$charsetAplicacao = 'ISO-8859-1';
+
+if (!method_exists($this, 'criarConexaoOracle')) {
+    echo 'Habilite conexaoOracle.php nas bibliotecas internas e gere a aplicacao.';
+    return;
+}
+
+try {
+    $db = $this->criarConexaoOracle($this->Db, $charsetConexao, $charsetAplicacao);
+
+    // Apostrofo e acentos sao valores do bind, sem concatenacao no SQL.
+    $texto = "D'Ávila - ação, café e órgão";
+    $linhas = $db->buscarTodos(
+        'SELECT :texto AS "TEXTO", :referencia AS "REFERENCIA" FROM DUAL',
+        ['texto' => $texto, 'referencia' => 123]
+    );
+
+    // Consulta sem parametros e sem resultados: o contrato retorna [].
+    $semRegistros = $db->buscarTodos('SELECT 1 AS "ID" FROM DUAL WHERE 1 = 0');
+
+    echo '<h2>Exemplo da biblioteca Oracle</h2>';
+    echo '<p>Consulta com binds:</p><pre>'
+        . htmlspecialchars(var_export($linhas, true), ENT_QUOTES, $charsetAplicacao)
+        . '</pre>';
+    echo '<p>Consulta sem registros:</p><pre>'
+        . htmlspecialchars(var_export($semRegistros, true), ENT_QUOTES, $charsetAplicacao)
+        . '</pre>';
+    echo '<p>Somente leitura. Nenhum INSERT, UPDATE, DELETE ou commit executado.</p>';
+} catch (\Semae\ScriptcaseOracle\FalhaOracleException $falha) {
+    echo 'Nao foi possivel consultar o Oracle.';
+    if ($falha->getCodigoOracle() !== null) {
+        echo ' Codigo: ' . htmlspecialchars($falha->getCodigoOracle(), ENT_QUOTES, $charsetAplicacao);
+    }
+    return;
+} catch (\InvalidArgumentException $falha) {
+    echo 'Confira a conexao, os charsets e os nomes e tipos dos parametros.';
+    return;
+} catch (\UnexpectedValueException $falha) {
+    echo 'Texto invalido ou nao representavel no charset de destino.';
+    return;
+} catch (\Throwable $falha) {
+    echo 'Nao foi possivel carregar ou executar o exemplo da biblioteca.';
+    return;
+}
+
+// ============================================================================
+// ESCRITAS - REFERENCIA COMENTADA, NAO EXECUTADA
+// ============================================================================
+// Exige tabela SC_ORACLE_LIB_TESTE dedicada em homologacao e ID de teste livre.
+// Em uma Blank dona da transacao, envolva as escritas em try/catch com:
+// sc_begin_trans(); antes, sc_commit_trans(); no sucesso (ou rollback no teste),
+// sc_rollback_trans(); na falha, seguida de interrupcao do fluxo.
+// Consulte escrita-rollback.php.txt e escrita-commit.php.txt para o fluxo completo.
+// Nao adicione estas macros a uma transacao que ja seja de outro evento.
+//
+// $db->executar(
+//     'INSERT INTO SC_ORACLE_LIB_TESTE (ID, ORIGEM, DESCRICAO) VALUES (:id, :origem, :texto)',
+//     ['id' => $idTeste, 'origem' => 'EXEMPLO', 'texto' => $texto]
+// );
+// $db->executar(
+//     'UPDATE SC_ORACLE_LIB_TESTE SET DESCRICAO = :texto WHERE ID = :id',
+//     ['texto' => 'Texto atualizado', 'id' => $idTeste]
+// );
+// $db->executar('DELETE FROM SC_ORACLE_LIB_TESTE WHERE ID = :id', ['id' => $idTeste]);
+//
+// Datas e decimais com conversao explicita, sem depender do NLS da sessao:
+// $db->executar(
+//     "UPDATE SC_ORACLE_LIB_TESTE
+//      SET DATA_REFERENCIA = TO_DATE(:data, 'YYYY-MM-DD'),
+//          VALOR = TO_NUMBER(:valor, '9999999990D00', 'NLS_NUMERIC_CHARACTERS=''.,''')
+//      WHERE ID = :id",
+//     ['data' => '2026-11-05', 'valor' => '1234.56', 'id' => $idTeste]
+// );

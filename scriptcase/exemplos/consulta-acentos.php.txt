@@ -1,0 +1,19 @@
+// Leitura ja validada na TESTE_CONEXAO: conexao e aplicacao ISO-8859-1.
+try {
+    $db = $this->criarConexaoOracle($this->Db, 'ISO-8859-1', 'ISO-8859-1');
+    $valor = "D'Ávila - ação, café e órgão";
+    $linhas = $db->buscarTodos('SELECT :valor AS TEXTO FROM DUAL', ['valor' => $valor]);
+    $bindCorreto = count($linhas) === 1 && array_values($linhas[0]) === [$valor];
+    echo 'Bind com acentos e apostrofo: ' . ($bindCorreto ? 'OK' : 'FALHOU') . '<br>';
+
+    $referencia = $db->buscarTodos(
+        "SELECT CAST(UNISTR('a\\00E7\\00E3o') AS VARCHAR2(20)) AS TEXTO FROM DUAL"
+    );
+    $leituraCorreta = count($referencia) === 1 && array_values($referencia[0]) === ['ação'];
+    echo 'Leitura de acentos do Oracle: ' . ($leituraCorreta ? 'OK' : 'FALHOU') . '<br>';
+    echo '<pre>' . htmlspecialchars(var_export($linhas, true), ENT_QUOTES, 'ISO-8859-1') . '</pre>';
+} catch (\Semae\ScriptcaseOracle\FalhaOracleException $falha) {
+    echo 'Falha: ' . htmlspecialchars($falha->getMessage(), ENT_QUOTES, 'ISO-8859-1') . '<br>';
+    echo 'Codigo Oracle: ' . ($falha->getCodigoOracle() ?? 'indisponivel');
+    return;
+}
